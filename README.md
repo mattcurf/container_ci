@@ -152,9 +152,13 @@ docker buildx build \
 
 The main workflow runs on push to `main`, tags matching `v*`, and pull requests. On PRs, it builds the multi-arch image without pushing. On push to main, it runs the full pipeline: build, push, Trivy scan, SBOM generation, Cosign signing, and SARIF upload to GitHub Security.
 
+### `nightly-scan.yml`
+
+Runs Trivy against the published image every night at 02:00 UTC. Uploads SARIF results to the GitHub Security tab and fails if CRITICAL or HIGH severity CVEs with available fixes are found.
+
 ### `scheduled-rebuild.yml`
 
-A cron-triggered workflow that runs every Monday at 06:00 UTC, calling `build-publish.yml` to ensure the image incorporates the latest Debian security patches.
+Manual-only (`workflow_dispatch`). Trigger from the Actions tab to rebuild and republish the image when a nightly scan finds CVEs that require a rebuild to resolve.
 
 ## Security
 
