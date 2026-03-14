@@ -3,4 +3,5 @@
 *.md
 LICENSE
 scripts/
+!scripts/strip-suid.sh
 .trivyignore
