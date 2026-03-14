@@ -7,8 +7,8 @@ Minimal, hardened Debian Bookworm base container image published to GitHub Conta
 ## Quick Start
 
 ```bash
-docker pull ghcr.io/<org>/base-debian:bookworm
-docker run --rm -it ghcr.io/<org>/base-debian:bookworm
+docker pull ghcr.io/<org>/base-debian:runtime-bookworm
+docker run --rm -it ghcr.io/<org>/base-debian:runtime-bookworm
 ```
 
 Replace `<org>` with your GitHub username or organization.
@@ -17,21 +17,24 @@ Replace `<org>` with your GitHub username or organization.
 
 | Variant | Tag suffix | Contents | Use case |
 |---------|-----------|----------|----------|
-| Runtime | `bookworm` | CA certs, timezone, locale only | Production workloads |
-| Debug   | `bookworm-debug` | Adds bash, curl, apt-get | Troubleshooting and development |
+| Runtime | `runtime-bookworm` | Curated Debian runtime files: `/bin/sh`, core runtime utilities, CA certs, timezone, locale, required shared libraries | Production workloads (final stage only) |
+| Dev     | `dev-bookworm` | Adds bash, curl, apt-get | Build stages, troubleshooting, development |
 
 ## What's Included
 
 ### Runtime variant
 
-| Package | Purpose |
-|---------|---------|
-| `ca-certificates` | TLS root certificates |
-| `locales` | UTF-8 locale support |
-| `tzdata` | Timezone data |
-| `libc-bin` | Core C library utilities |
+The runtime image is assembled from a curated Debian runtime filesystem rather than a full `debian:bookworm-slim` rootfs. It includes:
 
-### Debug variant (adds)
+- `/bin/sh` for container init
+- non-root user metadata for `appuser`
+- core runtime utilities used by the local verification flow
+- CA certificates, timezone data, locale data, and required shared libraries
+- no `apt-get`, no `dpkg-query`, and no `bash`
+
+The exact audited package contract is embedded in `/app/.package-manifest` and published as a CI artifact on every build.
+
+### Dev variant (adds)
 
 | Package | Purpose |
 |---------|---------|
@@ -58,23 +61,30 @@ Replace `<org>` with your GitHub username or organization.
 
 | Tag | Description |
 |-----|-------------|
-| `bookworm` | Latest build of Debian Bookworm base (runtime variant) |
-| `latest` | Alias for `bookworm` |
-| `bookworm-debug` | Latest build with debug tooling |
-| `bookworm-YYYYMMDD` | Date-stamped immutable tag |
-| `bookworm-<sha>` | Git SHA pinned tag |
+| `runtime-bookworm` | Latest build of runtime variant |
+| `dev-bookworm` | Latest build of dev variant |
+| `runtime-bookworm-YYYYMMDD` | Date-stamped immutable runtime tag |
+| `dev-bookworm-YYYYMMDD` | Date-stamped immutable dev tag |
+| `runtime-bookworm-<sha>` | Git SHA pinned runtime tag |
+| `dev-bookworm-<sha>` | Git SHA pinned dev tag |
 
 ## Downstream Usage
 
 ```dockerfile
-FROM ghcr.io/<org>/base-debian:bookworm
+# Build stage
+FROM ghcr.io/<org>/base-debian:dev-bookworm AS build
 
-# Install runtime-specific packages
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      openjdk-17-jre-headless && \
+      openjdk-17-jdk-headless maven && \
     rm -rf /var/lib/apt/lists/*
 
-COPY --chown=appuser:appuser ./app /app
+COPY . /app
+RUN cd /app && mvn package
+
+# Runtime stage
+FROM ghcr.io/<org>/base-debian:runtime-bookworm
+
+COPY --from=build --chown=appuser:appuser /app/target/service.jar /app/service.jar
 USER appuser
 CMD ["java", "-jar", "/app/service.jar"]
 ```
@@ -104,7 +114,7 @@ go install github.com/sigstore/cosign/v2/cmd/cosign@latest
 ### Cosign Verify
 
 ```bash
-cosign verify ghcr.io/<org>/base-debian:bookworm \
+cosign verify ghcr.io/<org>/base-debian:runtime-bookworm \
   --certificate-identity-regexp="https://github.com/<org>/container_ci" \
   --certificate-oidc-issuer="https://token.actions.githubusercontent.com"
 ```
@@ -128,13 +138,13 @@ sudo apt-get install -y trivy
 
 ```bash
 # Package names only
-trivy image --format spdx-json ghcr.io/<org>/base-debian:bookworm | jq '.packages[].name'
+trivy image --format spdx-json ghcr.io/<org>/base-debian:runtime-bookworm | jq '.packages[].name'
 
 # Package names, versions, and suppliers
-trivy image --format spdx-json ghcr.io/<org>/base-debian:bookworm | jq '.packages[] | {name, versionInfo, supplier}'
+trivy image --format spdx-json ghcr.io/<org>/base-debian:runtime-bookworm | jq '.packages[] | {name, versionInfo, supplier}'
 
 # Human-readable table with all packages
-trivy image --format table --list-all-pkgs ghcr.io/<org>/base-debian:bookworm
+trivy image --format table --list-all-pkgs ghcr.io/<org>/base-debian:runtime-bookworm
 ```
 
 ## Local Development
@@ -150,29 +160,30 @@ Environment variables:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `IMAGE_NAME` | `base-debian` | Image name |
-| `TAG` | `bookworm` | Image tag |
+| `TAG` | `runtime-bookworm` | Runtime image tag |
+| `DEV_TAG` | `dev-bookworm` | Dev image tag |
 | `PLATFORM` | Auto-detected | Target platform |
 
 ### Manual build
 
 ```bash
-# Runtime variant (default)
+# Runtime variant
 docker buildx build \
   --platform linux/amd64 \
   --target runtime \
   --build-arg BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   --build-arg VCS_REF="$(git rev-parse --short HEAD)" \
-  --tag base-debian:bookworm \
+  --tag base-debian:runtime-bookworm \
   --load \
   .
 
-# Debug variant
+# Dev variant
 docker buildx build \
   --platform linux/amd64 \
-  --target debug \
+  --target dev \
   --build-arg BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   --build-arg VCS_REF="$(git rev-parse --short HEAD)" \
-  --tag base-debian:bookworm-debug \
+  --tag base-debian:dev-bookworm \
   --load \
   .
 ```
@@ -181,7 +192,7 @@ docker buildx build \
 
 ### `build-publish.yml`
 
-The main workflow runs on push to `main`, tags matching `v*`, and pull requests. On PRs, it builds the multi-arch image without pushing. On push to main, it runs the full pipeline: build, push, Trivy scan **by digest**, SBOM generation, Cosign signing, and SARIF upload to GitHub Security. All post-build verification steps operate on the immutable image digest, not a mutable tag. Each build records the pinned base image digest and full package manifest as downloadable artifacts for audit and traceability. Both runtime and debug variants are built and published.
+The main workflow runs on push to `main`, tags matching `v*`, and pull requests. On PRs, it builds the multi-arch image without pushing. On push to main, it runs the full pipeline: build, push, Trivy scan **by digest**, SBOM generation, Cosign signing, and SARIF upload to GitHub Security. All post-build verification steps operate on the immutable image digest, not a mutable tag. Each build records the pinned base image digest and full package manifest as downloadable artifacts for audit and traceability. Both `runtime-bookworm` and `dev-bookworm` variants are built, scanned, signed, and attested independently.
 
 ### `nightly-scan.yml`
 
@@ -199,6 +210,12 @@ See [SECURITY.md](SECURITY.md) for the vulnerability reporting policy and respon
 
 See [DEPLOYMENT.md](DEPLOYMENT.md) for required runtime flags, security profiles, network policy, and secrets handling guidance when deploying images based on this base.
 
+## Image Strategy
+
+See [development.md](development.md) for the canonical policy on the runtime/dev image split, tagging policy, and downstream usage contract.
+
 ## License
 
-See [LICENSE](LICENSE) for details.
+The repository source and packaging logic are licensed under [Apache 2.0](LICENSE).
+
+Published images include Debian packages and other third-party components under their own upstream licenses. Use the published SBOM and package metadata for component-level licensing and attribution.
