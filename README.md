@@ -13,25 +13,43 @@ docker run --rm -it ghcr.io/<org>/base-debian:bookworm
 
 Replace `<org>` with your GitHub username or organization.
 
+## Image Variants
+
+| Variant | Tag suffix | Contents | Use case |
+|---------|-----------|----------|----------|
+| Runtime | `bookworm` | CA certs, timezone, locale only | Production workloads |
+| Debug   | `bookworm-debug` | Adds bash, curl, apt-get | Troubleshooting and development |
+
 ## What's Included
 
-### Installed Packages
+### Runtime variant
 
 | Package | Purpose |
 |---------|---------|
 | `ca-certificates` | TLS root certificates |
-| `curl` | Health checks, downloads |
 | `locales` | UTF-8 locale support |
 | `tzdata` | Timezone data |
 | `libc-bin` | Core C library utilities |
+
+### Debug variant (adds)
+
+| Package | Purpose |
+|---------|---------|
+| `bash` | Interactive shell |
+| `curl` | Health checks, downloads |
 
 ### Hardening Measures
 
 | Measure | Details |
 |---------|---------|
-| Non-root user | `appuser` (UID 1000) is the default user |
-| Working directory | `/app`, owned by `appuser` |
-| No SUID/SGID binaries | Stripped during build |
+| Non-root user | `appuser` (UID 1000) is the default user; enforced by build-time assertion |
+| Working directory | `/app`, owned by `appuser`; ownership verified at build time |
+| No SUID/SGID binaries | Stripped during build; enforced by fail-closed smoke test |
+| Pinned CI actions | All GitHub Actions pinned to immutable commit SHAs |
+| Pinned base image | `debian:bookworm-slim` pinned by digest for reproducibility |
+| Package allowlist | Installed packages gated against a reviewed baseline |
+| Digest-based verification | Scans, signatures, SBOMs, and attestations tied to the exact built digest |
+| Deployment guidance | Docker, Compose, and Kubernetes hardening examples provided |
 | Healthcheck | `HEALTHCHECK NONE` placeholder for downstream override |
 | OCI labels | Full `org.opencontainers.image.*` metadata |
 | dpkg excludes | Docs, man pages, and other bloat excluded |
@@ -40,8 +58,9 @@ Replace `<org>` with your GitHub username or organization.
 
 | Tag | Description |
 |-----|-------------|
-| `bookworm` | Latest build of Debian Bookworm base |
+| `bookworm` | Latest build of Debian Bookworm base (runtime variant) |
 | `latest` | Alias for `bookworm` |
+| `bookworm-debug` | Latest build with debug tooling |
 | `bookworm-YYYYMMDD` | Date-stamped immutable tag |
 | `bookworm-<sha>` | Git SHA pinned tag |
 
@@ -137,11 +156,23 @@ Environment variables:
 ### Manual build
 
 ```bash
+# Runtime variant (default)
 docker buildx build \
   --platform linux/amd64 \
+  --target runtime \
   --build-arg BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   --build-arg VCS_REF="$(git rev-parse --short HEAD)" \
   --tag base-debian:bookworm \
+  --load \
+  .
+
+# Debug variant
+docker buildx build \
+  --platform linux/amd64 \
+  --target debug \
+  --build-arg BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  --build-arg VCS_REF="$(git rev-parse --short HEAD)" \
+  --tag base-debian:bookworm-debug \
   --load \
   .
 ```
@@ -150,11 +181,11 @@ docker buildx build \
 
 ### `build-publish.yml`
 
-The main workflow runs on push to `main`, tags matching `v*`, and pull requests. On PRs, it builds the multi-arch image without pushing. On push to main, it runs the full pipeline: build, push, Trivy scan, SBOM generation, Cosign signing, and SARIF upload to GitHub Security.
+The main workflow runs on push to `main`, tags matching `v*`, and pull requests. On PRs, it builds the multi-arch image without pushing. On push to main, it runs the full pipeline: build, push, Trivy scan **by digest**, SBOM generation, Cosign signing, and SARIF upload to GitHub Security. All post-build verification steps operate on the immutable image digest, not a mutable tag. Each build records the pinned base image digest and full package manifest as downloadable artifacts for audit and traceability. Both runtime and debug variants are built and published.
 
 ### `nightly-scan.yml`
 
-Runs Trivy against the published image every night at 02:00 UTC. Uploads SARIF results to the GitHub Security tab and fails if CRITICAL or HIGH severity CVEs with available fixes are found.
+Runs Trivy against the published image every night at 02:00 UTC. The workflow resolves the current image digest before scanning, ensuring results are tied to an immutable artifact. Uploads SARIF results to the GitHub Security tab and fails if CRITICAL or HIGH severity CVEs with available fixes are found.
 
 ### `scheduled-rebuild.yml`
 
@@ -163,6 +194,10 @@ Manual-only (`workflow_dispatch`). Trigger from the Actions tab to rebuild and r
 ## Security
 
 See [SECURITY.md](SECURITY.md) for the vulnerability reporting policy and response timelines.
+
+## Deployment Hardening
+
+See [DEPLOYMENT.md](DEPLOYMENT.md) for required runtime flags, security profiles, network policy, and secrets handling guidance when deploying images based on this base.
 
 ## License
 
