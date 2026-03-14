@@ -45,7 +45,7 @@ This security policy covers:
 
 This project employs the following automated security practices:
 
-- **Weekly rebuilds** to incorporate the latest Debian security patches
+- **On-demand rebuilds** via manual workflow dispatch to incorporate the latest Debian security patches; automated scheduling is not currently enabled
 - **Trivy vulnerability scanning** on every build, failing on CRITICAL and HIGH severity findings
 - **Cosign image signing** for supply-chain integrity verification
 - **SBOM generation** (SPDX format) attached to every published image

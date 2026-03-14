@@ -24,17 +24,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2 # v3.10.0
 
       - name: Log in to GHCR
         if: github.event_name != 'pull_request'
-        uses: docker/login-action@v3
+        uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3.4.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -42,7 +42,7 @@ jobs:
 
       - name: Extract Docker metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@902fa8ec7d6ecbf8d84d538b9b233a880e428804 # v5.7.0
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
@@ -51,11 +51,22 @@ jobs:
             type=raw,value=bookworm-{{date 'YYYYMMDD'}},enable={{is_default_branch}}
             type=sha,prefix=bookworm-
 
+      - name: Extract Docker metadata (debug)
+        id: meta-debug
+        uses: docker/metadata-action@902fa8ec7d6ecbf8d84d538b9b233a880e428804 # v5.7.0
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=bookworm-debug,enable={{is_default_branch}}
+            type=raw,value=bookworm-debug-{{date 'YYYYMMDD'}},enable={{is_default_branch}}
+            type=sha,prefix=bookworm-debug-
+
       - name: Build and push
         id: build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@471d1dc4e07e5cdedd4c2171150001c434f0b7a4 # v6.15.0
         with:
           context: .
+          target: runtime
           platforms: linux/amd64,linux/arm64
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
@@ -68,11 +79,34 @@ jobs:
             BUILD_DATE=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.created'] }}
             VCS_REF=${{ github.sha }}
 
+      - name: Build and push (debug)
+        id: build-debug
+        uses: docker/build-push-action@471d1dc4e07e5cdedd4c2171150001c434f0b7a4 # v6.15.0
+        with:
+          context: .
+          target: debug
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta-debug.outputs.tags }}
+          labels: ${{ steps.meta-debug.outputs.labels }}
+          provenance: true
+          sbom: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            BUILD_DATE=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.created'] }}
+            VCS_REF=${{ github.sha }}
+
+      - name: Set digest reference
+        id: digest-ref
+        if: github.event_name != 'pull_request'
+        run: echo "image=${REGISTRY}/${IMAGE_NAME}@${{ steps.build.outputs.digest }}" >> "$GITHUB_OUTPUT"
+
       - name: Trivy vulnerability scan (SARIF)
         if: github.event_name != 'pull_request'
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
         with:
-          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:bookworm
+          image-ref: ${{ steps.digest-ref.outputs.image }}
           format: sarif
           output: trivy-results.sarif
           severity: CRITICAL,HIGH
@@ -80,15 +114,15 @@ jobs:
 
       - name: Upload Trivy SARIF
         if: github.event_name != 'pull_request'
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@8c78abb9b62512e3c45dea6559ffd924ed8549c8 # v3.28.0
         with:
           sarif_file: trivy-results.sarif
 
       - name: Trivy scan (table for logs)
         if: github.event_name != 'pull_request'
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
         with:
-          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:bookworm
+          image-ref: ${{ steps.digest-ref.outputs.image }}
           format: table
           severity: CRITICAL,HIGH
           ignore-unfixed: true
@@ -96,22 +130,44 @@ jobs:
 
       - name: Trivy SBOM generation
         if: github.event_name != 'pull_request'
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
         with:
-          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:bookworm
+          image-ref: ${{ steps.digest-ref.outputs.image }}
           format: spdx-json
           output: sbom.spdx.json
 
       - name: Upload SBOM artifact
         if: github.event_name != 'pull_request'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
         with:
           name: sbom
           path: sbom.spdx.json
 
+      - name: Record base image digest
+        if: github.event_name != 'pull_request'
+        run: |
+          BASE_DIGEST=$(grep '^FROM' Dockerfile | head -1 | grep -o 'sha256:[a-f0-9]*')
+          echo "Base image digest: ${BASE_DIGEST}" >> "$GITHUB_STEP_SUMMARY"
+          echo "${BASE_DIGEST}" > base-digest.txt
+
+      - name: Record package manifest
+        if: github.event_name != 'pull_request'
+        run: |
+          docker run --rm ${{ steps.digest-ref.outputs.image }} \
+            dpkg-query -W -f='${Package}\t${Version}\n' > package-manifest.txt
+
+      - name: Upload build metadata
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
+        with:
+          name: build-metadata
+          path: |
+            base-digest.txt
+            package-manifest.txt
+
       - name: Install Cosign
         if: github.event_name != 'pull_request'
-        uses: sigstore/cosign-installer@v3
+        uses: sigstore/cosign-installer@c56c2d3e59e4281cc41dea2217323ba5694b171e # v3.8.0
 
       - name: Cosign sign image
         if: github.event_name != 'pull_request'
