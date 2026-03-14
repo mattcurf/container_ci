@@ -62,6 +62,26 @@ CMD ["java", "-jar", "/app/service.jar"]
 
 ## Verifying the Image
 
+<details>
+<summary>Install prerequisites (cosign, jq)</summary>
+
+**macOS:**
+```bash
+brew install cosign jq
+```
+
+**Ubuntu/Debian:**
+```bash
+sudo apt-get install -y cosign jq
+```
+
+**Go (any platform):**
+```bash
+go install github.com/sigstore/cosign/v2/cmd/cosign@latest
+```
+
+</details>
+
 ### Cosign Verify
 
 ```bash
@@ -72,11 +92,30 @@ cosign verify ghcr.io/<org>/base-debian:bookworm \
 
 ### SBOM Inspection
 
+<details>
+<summary>Install prerequisites (trivy)</summary>
+
+**macOS:**
 ```bash
-cosign verify-attestation --type spdx \
-  --certificate-identity-regexp="https://github.com/<org>/container_ci" \
-  --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
-  ghcr.io/<org>/base-debian:bookworm | jq -r '.payload' | base64 -d | jq .
+brew install trivy
+```
+
+**Ubuntu/Debian:**
+```bash
+sudo apt-get install -y trivy
+```
+
+</details>
+
+```bash
+# Package names only
+trivy image --format spdx-json ghcr.io/<org>/base-debian:bookworm | jq '.packages[].name'
+
+# Package names, versions, and suppliers
+trivy image --format spdx-json ghcr.io/<org>/base-debian:bookworm | jq '.packages[] | {name, versionInfo, supplier}'
+
+# Human-readable table with all packages
+trivy image --format table --list-all-pkgs ghcr.io/<org>/base-debian:bookworm
 ```
 
 ## Local Development
