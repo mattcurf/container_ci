@@ -1,0 +1,8 @@
+# Trivy CVE Suppressions
+# ----------------------
+# Add CVE IDs below to suppress known vulnerabilities.
+# Each entry MUST include a justification comment.
+#
+# Format:
+#   # Justification: <reason>
+#   CVE-YYYY-NNNNN
