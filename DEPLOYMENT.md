@@ -2,6 +2,8 @@
 
 This document defines the runtime security contract for containers built from `base-debian`. A secure base image alone is not sufficient — downstream consumers must enforce runtime policy.
 
+> **Note:** Deployment examples use the `runtime-bookworm` image exclusively. The `dev-bookworm` image is intended for build and debug stages only and must not be deployed to production.
+
 ## Runtime Requirements
 
 All containers derived from this base image **must** be launched with the following flags:
@@ -24,7 +26,7 @@ Use the Docker default seccomp profile, which blocks approximately 44 of 300+ sy
 ```bash
 docker run --rm \
   --security-opt seccomp=/path/to/custom-seccomp.json \
-  ghcr.io/<org>/base-debian:bookworm
+  ghcr.io/<org>/base-debian:runtime-bookworm
 ```
 
 ### AppArmor / SELinux
@@ -60,7 +62,7 @@ docker run --rm \
   --security-opt=no-new-privileges \     # Block privilege escalation via setuid/setgid
   --cap-drop=ALL \                       # Drop all Linux capabilities
   --tmpfs /tmp:rw,noexec,nosuid,size=64m \  # Writable /tmp without execute permissions
-  ghcr.io/<org>/base-debian:bookworm \
+  ghcr.io/<org>/base-debian:runtime-bookworm \
   /app/my-service
 ```
 
@@ -69,7 +71,7 @@ docker run --rm \
 ```yaml
 services:
   app:
-    image: ghcr.io/<org>/base-debian:bookworm
+    image: ghcr.io/<org>/base-debian:runtime-bookworm
     read_only: true               # Read-only root filesystem
     security_opt:
       - no-new-privileges         # Prevent privilege escalation
@@ -89,7 +91,7 @@ metadata:
 spec:
   containers:
     - name: app
-      image: ghcr.io/<org>/base-debian:bookworm
+      image: ghcr.io/<org>/base-debian:runtime-bookworm
       securityContext:
         runAsNonRoot: true              # Require non-root user
         runAsUser: 1000                 # Run as appuser (UID 1000)

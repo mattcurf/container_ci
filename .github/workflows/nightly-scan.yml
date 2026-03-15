@@ -14,7 +14,7 @@ env:
   IMAGE_NAME: ${{ github.repository_owner }}/base-debian
 
 jobs:
-  scan:
+  scan-runtime:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -24,7 +24,7 @@ jobs:
         id: resolve
         run: |
           DIGEST=$(docker buildx imagetools inspect \
-            ${REGISTRY}/${IMAGE_NAME}:bookworm --format '{{.Manifest.Digest}}')
+            ${REGISTRY}/${IMAGE_NAME}:runtime-bookworm --format '{{.Manifest.Digest}}')
           echo "image=${REGISTRY}/${IMAGE_NAME}@${DIGEST}" >> "$GITHUB_OUTPUT"
           echo "Resolved digest: ${DIGEST}"
 
@@ -33,14 +33,53 @@ jobs:
         with:
           image-ref: ${{ steps.resolve.outputs.image }}
           format: sarif
-          output: trivy-results.sarif
+          output: trivy-results-runtime.sarif
           severity: CRITICAL,HIGH
           ignore-unfixed: true
 
       - name: Upload Trivy SARIF
         uses: github/codeql-action/upload-sarif@8c78abb9b62512e3c45dea6559ffd924ed8549c8 # v3.28.0
         with:
-          sarif_file: trivy-results.sarif
+          sarif_file: trivy-results-runtime.sarif
+          category: trivy-runtime
+
+      - name: Trivy scan (table for logs)
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        with:
+          image-ref: ${{ steps.resolve.outputs.image }}
+          format: table
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: '1'
+
+  scan-dev:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Resolve image digest
+        id: resolve
+        run: |
+          DIGEST=$(docker buildx imagetools inspect \
+            ${REGISTRY}/${IMAGE_NAME}:dev-bookworm --format '{{.Manifest.Digest}}')
+          echo "image=${REGISTRY}/${IMAGE_NAME}@${DIGEST}" >> "$GITHUB_OUTPUT"
+          echo "Resolved digest: ${DIGEST}"
+
+      - name: Trivy vulnerability scan (SARIF)
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        with:
+          image-ref: ${{ steps.resolve.outputs.image }}
+          format: sarif
+          output: trivy-results-dev.sarif
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+
+      - name: Upload Trivy SARIF
+        uses: github/codeql-action/upload-sarif@8c78abb9b62512e3c45dea6559ffd924ed8549c8 # v3.28.0
+        with:
+          sarif_file: trivy-results-dev.sarif
+          category: trivy-dev
 
       - name: Trivy scan (table for logs)
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0

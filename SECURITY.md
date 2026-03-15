@@ -4,7 +4,8 @@
 
 | Version | Supported |
 |---------|-----------|
-| `bookworm` (latest) | ✅ Yes |
+| `runtime-bookworm` | ✅ Yes |
+| `dev-bookworm` | ✅ Yes |
 
 ## Reporting a Vulnerability
 
@@ -32,7 +33,8 @@ Instead, please use [GitHub Security Advisories](https://github.com/mattcurf/con
 
 This security policy covers:
 
-- The `base-debian` container image
+- The `base-debian` runtime container image (`runtime-bookworm`)
+- The `base-debian` dev container image (`dev-bookworm`)
 - The CI/CD pipeline (`build-publish.yml`, `scheduled-rebuild.yml`)
 - Build scripts and configuration in this repository
 
