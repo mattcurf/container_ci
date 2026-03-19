@@ -24,7 +24,12 @@ jobs:
         id: resolve
         run: |
           DIGEST=$(docker buildx imagetools inspect \
-            ${REGISTRY}/${IMAGE_NAME}:runtime-bookworm --format '{{.Manifest.Digest}}')
+            ${REGISTRY}/${IMAGE_NAME}:runtime-bookworm \
+            | awk '/^Digest:[[:space:]]+/ {print $2; exit}')
+          if ! echo "${DIGEST}" | grep -Eq '^sha256:[a-f0-9]{64}$'; then
+            echo "Failed to resolve a valid image digest for runtime-bookworm" >&2
+            exit 1
+          fi
           echo "image=${REGISTRY}/${IMAGE_NAME}@${DIGEST}" >> "$GITHUB_OUTPUT"
           echo "Resolved digest: ${DIGEST}"
 
@@ -62,7 +67,12 @@ jobs:
         id: resolve
         run: |
           DIGEST=$(docker buildx imagetools inspect \
-            ${REGISTRY}/${IMAGE_NAME}:dev-bookworm --format '{{.Manifest.Digest}}')
+            ${REGISTRY}/${IMAGE_NAME}:dev-bookworm \
+            | awk '/^Digest:[[:space:]]+/ {print $2; exit}')
+          if ! echo "${DIGEST}" | grep -Eq '^sha256:[a-f0-9]{64}$'; then
+            echo "Failed to resolve a valid image digest for dev-bookworm" >&2
+            exit 1
+          fi
           echo "image=${REGISTRY}/${IMAGE_NAME}@${DIGEST}" >> "$GITHUB_OUTPUT"
           echo "Resolved digest: ${DIGEST}"
 
