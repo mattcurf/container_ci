@@ -100,7 +100,9 @@ jobs:
       - name: Set digest reference (runtime)
         id: digest-ref
         if: github.event_name != 'pull_request'
-        run: echo "image=${REGISTRY}/${IMAGE_NAME}@${{ steps.build.outputs.digest }}" >> "$GITHUB_OUTPUT"
+        run: |
+          DIGEST=$(echo "${{ steps.build.outputs.digest }}" | head -1)
+          echo "image=${REGISTRY}/${IMAGE_NAME}@${DIGEST}" >> "$GITHUB_OUTPUT"
 
       - name: Trivy vulnerability scan - runtime (SARIF)
         if: github.event_name != 'pull_request'
@@ -172,17 +174,15 @@ jobs:
 
       - name: Cosign sign image (runtime)
         if: github.event_name != 'pull_request'
-        env:
-          DIGEST: ${{ steps.build.outputs.digest }}
         run: |
+          DIGEST=$(echo "${{ steps.build.outputs.digest }}" | head -1)
           cosign sign --yes \
             ${REGISTRY}/${IMAGE_NAME}@${DIGEST}
 
       - name: Cosign attach SBOM attestation (runtime)
         if: github.event_name != 'pull_request'
-        env:
-          DIGEST: ${{ steps.build.outputs.digest }}
         run: |
+          DIGEST=$(echo "${{ steps.build.outputs.digest }}" | head -1)
           cosign attest --yes --type spdx \
             --predicate sbom.spdx.json \
             ${REGISTRY}/${IMAGE_NAME}@${DIGEST}
@@ -190,7 +190,9 @@ jobs:
       - name: Set digest reference (dev)
         id: digest-ref-dev
         if: github.event_name != 'pull_request'
-        run: echo "image=${REGISTRY}/${IMAGE_NAME}@${{ steps.build-dev.outputs.digest }}" >> "$GITHUB_OUTPUT"
+        run: |
+          DIGEST=$(echo "${{ steps.build-dev.outputs.digest }}" | head -1)
+          echo "image=${REGISTRY}/${IMAGE_NAME}@${DIGEST}" >> "$GITHUB_OUTPUT"
 
       - name: Trivy vulnerability scan - dev (SARIF)
         if: github.event_name != 'pull_request'
@@ -236,17 +238,15 @@ jobs:
 
       - name: Cosign sign image (dev)
         if: github.event_name != 'pull_request'
-        env:
-          DIGEST: ${{ steps.build-dev.outputs.digest }}
         run: |
+          DIGEST=$(echo "${{ steps.build-dev.outputs.digest }}" | head -1)
           cosign sign --yes \
             ${REGISTRY}/${IMAGE_NAME}@${DIGEST}
 
       - name: Cosign attach SBOM attestation (dev)
         if: github.event_name != 'pull_request'
-        env:
-          DIGEST: ${{ steps.build-dev.outputs.digest }}
         run: |
+          DIGEST=$(echo "${{ steps.build-dev.outputs.digest }}" | head -1)
           cosign attest --yes --type spdx \
             --predicate sbom-dev.spdx.json \
             ${REGISTRY}/${IMAGE_NAME}@${DIGEST}
