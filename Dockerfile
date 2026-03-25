@@ -62,7 +62,6 @@ COPY scripts/strip-suid.sh /tmp/strip-suid.sh
 RUN sh /tmp/strip-suid.sh && rm /tmp/strip-suid.sh
 
 RUN groupadd -r appuser && useradd -r -g appuser -u 1000 -m -d /app -s /bin/sh appuser && \
-    mkdir -p /app && \
     chown appuser:appuser /app
 
 RUN dpkg-query -W -f='${Package}\n' | sort > /tmp/runtime-packages.installed && \
