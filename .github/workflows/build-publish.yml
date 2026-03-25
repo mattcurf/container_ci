@@ -183,7 +183,7 @@ jobs:
         if: github.event_name != 'pull_request'
         run: |
           DIGEST=$(echo "${{ steps.build.outputs.digest }}" | head -1)
-          cosign attest --yes --type spdx \
+          cosign attest --yes --type spdxjson \
             --predicate sbom.spdx.json \
             ${REGISTRY}/${IMAGE_NAME}@${DIGEST}
 
@@ -247,6 +247,6 @@ jobs:
         if: github.event_name != 'pull_request'
         run: |
           DIGEST=$(echo "${{ steps.build-dev.outputs.digest }}" | head -1)
-          cosign attest --yes --type spdx \
+          cosign attest --yes --type spdxjson \
             --predicate sbom-dev.spdx.json \
             ${REGISTRY}/${IMAGE_NAME}@${DIGEST}
